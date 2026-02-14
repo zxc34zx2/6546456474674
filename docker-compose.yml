@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  telegram-bot:
+    build: .
+    container_name: ultra-secure-bot
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - ./secure_data:/app/secure_data
+      - ./logs:/app/logs
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    networks:
+      - bot_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Опционально: мониторинг
+  healthchecker:
+    image: alpine:latest
+    container_name: bot-healthchecker
+    restart: unless-stopped
+    command: >
+      sh -c "
+      while true; do
+        if docker ps --filter 'name=ultra-secure-bot' --filter 'status=running' | grep -q ultra-secure-bot; then
+          echo 'Bot is running';
+        else
+          echo 'Bot is down! Restarting...';
+          docker restart ultra-secure-bot 2>/dev/null || true;
+        fi;
+        sleep 300;
+      done
+      "
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - bot_network
+    depends_on:
+      - telegram-bot
+    deploy:
+      resources:
+        limits:
+          cpus: '0.05'
+          memory: 64M
+
+networks:
+  bot_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
